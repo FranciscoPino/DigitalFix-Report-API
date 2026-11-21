@@ -4,7 +4,9 @@ API de consulta para indicadores operacionales DigitalFix. No modifica órdenes 
 
 ## Arquitectura y patrón
 
-Bounded context de reportería con interfaz REST y repositorio JDBC. El consumidor Kafka actualiza `reporting.order_kpis` consultando el estado actual de `workorders.work_orders` en PostgreSQL. Las demás consultas existentes siguen leyendo directamente `workorders.work_orders`. Los eventos repetidos son seguros y una proyección antigua no sobrescribe una más reciente.
+Bounded context de reportería con interfaz REST y repositorio JDBC. El consumidor Kafka actualiza `reporting.order_kpis` consultando el estado actual de `workorders.work_orders` en PostgreSQL; los indicadores consultan esa proyección, por lo que pueden retrasarse respecto de la orden. Los eventos repetidos son seguros y una proyección antigua no sobrescribe una más reciente.
+
+Para incluir órdenes anteriores y reconciliar la proyección, ejecuta [`backfill-reporting-order-kpis.sql`](../backfill-reporting-order-kpis.sql) en la base compartida. Es idempotente y no reemplaza proyecciones con una fecha más reciente; coordina su ejecución con el despliegue. No reconstruye el historial de auditoría.
 
 ## Configuración local
 
@@ -28,6 +30,8 @@ Cada mensaje es JSON, con clave Kafka igual al UUID de la orden para preservar s
 ```
 
 El contrato corresponde a los campos de `integration.outbox_events`: `event_id`, `event_type`, `aggregate_type`, `aggregate_id`, `created_at` y `payload`. Usa un `eventId` estable para cada evento, también al reintentar. La orden debe existir en la base compartida antes de publicar; la proyección usa su estado actual, no el estado histórico del mensaje.
+
+El consumidor acepta `schemaVersion: 1` y eventos anteriores sin versión. Valida el estado y su correspondencia con el tipo; si `payload.workOrderId` está presente debe coincidir con `aggregateId`. Los mensajes inválidos siguen la política de reintentos y DLT.
 
 Workorders publica desde la outbox. Report confirma el offset tras procesar cada registro; después de tres reintentos de 5 segundos envía fallos a su DLT. Si falla esa publicación, no se confirma el registro. `earliest` se aplica a grupos nuevos; no reinicia offsets existentes.
 

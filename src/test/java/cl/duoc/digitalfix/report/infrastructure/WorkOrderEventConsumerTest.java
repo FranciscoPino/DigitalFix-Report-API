@@ -32,6 +32,8 @@ class WorkOrderEventConsumerTest {
         WorkOrderEventConsumer consumer = new WorkOrderEventConsumer(new ObjectMapper(), repository);
         assertThrows(Exception.class, () -> consumer.consume(EVENT.replace("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "bad")));
         assertThrows(Exception.class, () -> consumer.consume(EVENT.replace("2026-01-01T10:00:00Z", "bad")));
+        assertThrows(IllegalArgumentException.class, () -> consumer.consume(EVENT.replace("\"status\":\"CLOSED\"", "\"status\":\"CREATED\"")));
+        assertThrows(IllegalArgumentException.class, () -> consumer.consume(EVENT.replace("\"eventId\"", "\"schemaVersion\":2,\"eventId\"")));
         verifyNoInteractions(repository);
     }
 

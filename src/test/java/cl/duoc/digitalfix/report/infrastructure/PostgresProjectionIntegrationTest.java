@@ -13,6 +13,31 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 @EnabledIfEnvironmentVariable(named = "DIGITALFIX_TEST_DB_URL", matches = "jdbc:postgresql:.*")
 class PostgresProjectionIntegrationTest {
     @Test
+    void indicatorsReadTheProjectionRatherThanLiveOrders() throws Exception {
+        try (Connection connection = DriverManager.getConnection(System.getenv("DIGITALFIX_TEST_DB_URL"), "postgres", "test")) {
+            connection.setAutoCommit(false);
+            JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
+            jdbc.execute("CREATE SCHEMA workorders");
+            jdbc.execute("CREATE SCHEMA reporting");
+            jdbc.execute("""
+                    CREATE TABLE reporting.order_kpis (work_order_id uuid PRIMARY KEY, created_at timestamptz NOT NULL,
+                    final_status text NOT NULL, service_id uuid NOT NULL, resolution_minutes integer)
+                    """);
+            UUID serviceId = UUID.randomUUID();
+            jdbc.update("""
+                    INSERT INTO reporting.order_kpis VALUES (?, now(), 'CREATED', ?, NULL),
+                    (?, now(), 'CLOSED', ?, 60)
+                    """, UUID.randomUUID(), serviceId, UUID.randomUUID(), serviceId);
+            JdbcReportRepository repository = new JdbcReportRepository(jdbc);
+            assertEquals(2, repository.kpis().get("ordersPerHour"));
+            assertEquals(1, repository.kpis().get("activeOrders"));
+            assertEquals(60.0, repository.kpis().get("averageResolutionMinutes"));
+            assertEquals(2L, repository.topServices().get(0).get("total"));
+            connection.rollback();
+        }
+    }
+
+    @Test
     void upsertsCurrentStateWithoutRegressingAndRejectsMissingOrders() throws Exception {
         try (Connection connection = DriverManager.getConnection(System.getenv("DIGITALFIX_TEST_DB_URL"), "postgres", "test")) {
             connection.setAutoCommit(false);

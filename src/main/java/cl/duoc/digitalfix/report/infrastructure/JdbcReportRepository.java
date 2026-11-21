@@ -35,9 +35,9 @@ public class JdbcReportRepository {
     }
 
     public Map<String, Object> kpis() {
-        Integer active = jdbc.queryForObject("SELECT COUNT(*) FROM workorders.work_orders WHERE status NOT IN ('CLOSED', 'CANCELLED')", Integer.class);
+        Integer active = jdbc.queryForObject("SELECT COUNT(*) FROM reporting.order_kpis WHERE final_status NOT IN ('CLOSED', 'CANCELLED')", Integer.class);
         Double resolution = jdbc.queryForObject("SELECT COALESCE(AVG(resolution_minutes), 0) FROM reporting.order_kpis", Double.class);
-        Integer orders = jdbc.queryForObject("SELECT COUNT(*) FROM workorders.work_orders WHERE created_at >= NOW() - INTERVAL '24 hours'", Integer.class);
+        Integer orders = jdbc.queryForObject("SELECT COUNT(*) FROM reporting.order_kpis WHERE created_at >= NOW() - INTERVAL '24 hours'", Integer.class);
         return Map.of("ordersPerHour", orders == null ? 0 : orders, "averageResolutionMinutes", resolution == null ? 0 : resolution,
                 "activeOrders", active == null ? 0 : active, "source", "PostgreSQL/Kafka projection");
     }
@@ -45,7 +45,7 @@ public class JdbcReportRepository {
     public List<Map<String, Object>> topServices() {
         return jdbc.queryForList("""
                 SELECT service_id AS "serviceId", COUNT(*) AS total
-                FROM workorders.work_orders
+                FROM reporting.order_kpis
                 WHERE created_at >= NOW() - INTERVAL '7 days'
                 GROUP BY service_id ORDER BY total DESC LIMIT 10
                 """);
